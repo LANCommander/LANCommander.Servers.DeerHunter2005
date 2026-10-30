@@ -1,0 +1,58 @@
+#!/bin/sh
+# Start the Deer Hunter 2005 dedicated server (START_EXE).
+#
+# DH2005 reads its own Windows command line (-Server_Name:"My Server"). The entrypoint splits
+# START_ARGS and Wine re-quotes each token, which mangles that format, so the command line is
+# written to a batch file and run with cmd instead. The game has no console output; Game/Game.LOG
+# is followed to stdout so it shows up in `docker logs`.
+set -e
+
+: "${WINEPREFIX:=/config/wineprefix}"
+cd "${SERVER_ROOT:-/config/Merged}"
+
+if [ ! -f DH2005.exe ]; then
+    echo "DH2005.exe not found in $(pwd). Put a Deer Hunter 2005 v1.2 install in /config/Server." >&2
+    exit 1
+fi
+
+# opt <name> <value>: append -<name>:"<value>" when value is set. % is doubled for cmd; " is dropped.
+cmdline="DH2005.exe -Dedicated_Server:TRUE"
+opt() {
+    [ -n "$2" ] || return 0
+    value=$(printf '%s' "$2" | sed 's/"//g; s/%/%%/g')
+    cmdline="$cmdline -$1:\"$value\""
+}
+
+opt Server_Name "$DH2005_SERVER_NAME"
+opt Message_of_the_Day "$DH2005_MESSAGE_OF_THE_DAY"
+opt Password "$DH2005_PASSWORD"
+opt Game_Type "$DH2005_GAME_TYPE"
+opt Max_Players "$DH2005_MAX_PLAYERS"
+opt Location "$DH2005_LOCATION"
+opt Season "$DH2005_SEASON"
+opt Difficulty "$DH2005_DIFFICULTY"
+opt Random_Maps "$DH2005_RANDOM_MAPS"
+opt Time_Limit "$DH2005_TIME_LIMIT"
+opt Show_Hunters_in_GPS "$DH2005_SHOW_HUNTERS_IN_GPS"
+opt Publish_in_Gamespy "$DH2005_PUBLISH_IN_GAMESPY"
+opt Auto_kick_People_Shooters "$DH2005_AUTO_KICK_PEOPLE_SHOOTERS"
+opt Allow_Voting "$DH2005_ALLOW_VOTING"
+opt View_Distance "$DH2005_VIEW_DISTANCE"
+opt Tree_Density "$DH2005_TREE_DENSITY"
+opt Weather "$DH2005_WEATHER"
+opt Time_Multiplier "$DH2005_TIME_MULTIPLIER"
+opt First_Day_Hour "$DH2005_FIRST_DAY_HOUR"
+opt Disabled_Items "$DH2005_DISABLED_ITEMS"
+
+[ -z "$DH2005_EXTRA_ARGS" ] || cmdline="$cmdline $DH2005_EXTRA_ARGS"
+[ "$#" -eq 0 ] || cmdline="$cmdline $*"
+
+batch="$WINEPREFIX/drive_c/dh2005-server.bat"
+printf '@echo off\r\n%s\r\n' "$cmdline" > "$batch"
+echo "Starting: $cmdline"
+
+# Game.LOG is recreated on every start; -F picks up the new file
+mkdir -p Game
+tail -n 0 -F Game/Game.LOG 2>/dev/null &
+
+exec wine-run cmd /c 'C:\dh2005-server.bat'
